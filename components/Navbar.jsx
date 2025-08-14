@@ -1,5 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+{user && <Link className="btn" to="/demandas">Demandas</Link>}
+{user && <Link className="btn" to="/">Início</Link>}
+{profile?.role === 'admin' && <Link className="btn" to="/admin">Admin</Link>}
+{user && <Link className="btn" to="/demandas">Demandas</Link>}
+
 
 export default function Navbar() {
   const { user, profile, signOut } = useAuth()
