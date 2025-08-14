@@ -3,6 +3,44 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
 
+// Base das rotas de API:
+// - Produção ou `vercel dev`: pode ficar vazio (usa o mesmo host).
+// - Vite (`npm run dev`): defina VITE_API_BASE no .env apontando para seu deploy Vercel.
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+
+async function api(path, options = {}) {
+  // pega o token atual do usuário logado
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+
+  const url = `${API_BASE}${path}`
+
+  const r = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const text = await r.text()
+  let payload = {}
+  try {
+    payload = text ? JSON.parse(text) : {}
+  } catch {
+    // resposta não-JSON (ex.: HTML de erro). Mantém text para mensagem.
+    payload = { raw: text }
+  }
+
+  if (!r.ok) {
+    const msg = payload?.error || payload?.raw || 'Erro na API'
+    throw new Error(msg)
+  }
+
+  return payload
+}
+
 export default function AdminDashboard() {
   const { user, profile } = useAuth()
   const [list, setList] = useState([])
@@ -11,21 +49,10 @@ export default function AdminDashboard() {
   const [createForm, setCreateForm] = useState({ name:'', email:'', password:'', role:'user' })
   const [pwd, setPwd] = useState({ id:'', pass:'' }) // reset senha
 
-  async function getToken() {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token
-  }
-
   async function fetchUsers() {
-    setError('')
-    setLoading(true)
+    setError(''); setLoading(true)
     try {
-      const token = await getToken()
-      const r = await fetch('/api/admin-list-users', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Falha ao listar usuários')
+      const j = await api('/api/admin-list-users')
       setList(j.users || [])
     } catch (e) {
       setError(e.message)
@@ -40,14 +67,10 @@ export default function AdminDashboard() {
     e.preventDefault()
     setError('')
     try {
-      const token = await getToken()
-      const r = await fetch('/api/admin-create-user', {
+      await api('/api/admin-create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(createForm),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erro ao criar usuário')
       setCreateForm({ name:'', email:'', password:'', role:'user' })
       await fetchUsers()
       alert('Usuário criado com sucesso!')
@@ -59,14 +82,10 @@ export default function AdminDashboard() {
   async function changeRole(id, role) {
     setError('')
     try {
-      const token = await getToken()
-      const r = await fetch('/api/admin-update-user', {
+      await api('/api/admin-update-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ id, role }),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erro ao atualizar role')
       await fetchUsers()
     } catch (e) {
       setError(e.message)
@@ -78,14 +97,10 @@ export default function AdminDashboard() {
     if (!pwd.id || !pwd.pass) return
     setError('')
     try {
-      const token = await getToken()
-      const r = await fetch('/api/admin-reset-password', {
+      await api('/api/admin-reset-password', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ id: pwd.id, password: pwd.pass }),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erro ao resetar senha')
       setPwd({ id:'', pass:'' })
       alert('Senha atualizada!')
     } catch (e) {
@@ -97,14 +112,10 @@ export default function AdminDashboard() {
     if (!confirm('Tem certeza que deseja excluir este usuário?')) return
     setError('')
     try {
-      const token = await getToken()
-      const r = await fetch('/api/admin-delete-user', {
+      await api('/api/admin-delete-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ id }),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erro ao excluir usuário')
       await fetchUsers()
     } catch (e) {
       setError(e.message)
@@ -114,7 +125,9 @@ export default function AdminDashboard() {
   return (
     <div className="container py-4">
       <h1 className="h4 mb-3">Painel do Administrador</h1>
-      <p className="text-muted mb-4">Logado como: <strong>{user?.email}</strong> • Role: <strong>{profile?.role}</strong></p>
+      <p className="text-muted mb-4">
+        Logado como: <strong>{user?.email}</strong> • Role: <strong>{profile?.role}</strong>
+      </p>
 
       {error && <div className="alert alert-danger">{error}</div>}
 
@@ -125,27 +138,37 @@ export default function AdminDashboard() {
           <form className="row g-2 align-items-end" onSubmit={createUser}>
             <div className="col-md-3">
               <label className="form-label">Nome</label>
-              <input className="form-control"
-                     value={createForm.name}
-                     onChange={e=>setCreateForm({...createForm, name:e.target.value})}/>
+              <input
+                className="form-control"
+                value={createForm.name}
+                onChange={e=>setCreateForm({...createForm, name:e.target.value})}
+              />
             </div>
             <div className="col-md-3">
               <label className="form-label">E-mail</label>
-              <input type="email" className="form-control"
-                     value={createForm.email}
-                     onChange={e=>setCreateForm({...createForm, email:e.target.value})}/>
+              <input
+                type="email"
+                className="form-control"
+                value={createForm.email}
+                onChange={e=>setCreateForm({...createForm, email:e.target.value})}
+              />
             </div>
             <div className="col-md-2">
               <label className="form-label">Senha inicial</label>
-              <input type="password" className="form-control"
-                     value={createForm.password}
-                     onChange={e=>setCreateForm({...createForm, password:e.target.value})}/>
+              <input
+                type="password"
+                className="form-control"
+                value={createForm.password}
+                onChange={e=>setCreateForm({...createForm, password:e.target.value})}
+              />
             </div>
             <div className="col-md-2">
               <label className="form-label">Papel</label>
-              <select className="form-select"
-                      value={createForm.role}
-                      onChange={e=>setCreateForm({...createForm, role:e.target.value})}>
+              <select
+                className="form-select"
+                value={createForm.role}
+                onChange={e=>setCreateForm({...createForm, role:e.target.value})}
+              >
                 <option value="user">user</option>
                 <option value="admin">admin</option>
               </select>
@@ -164,16 +187,21 @@ export default function AdminDashboard() {
           <form className="row g-2 align-items-end" onSubmit={resetPassword}>
             <div className="col-md-4">
               <label className="form-label">Usuário (ID)</label>
-              <input className="form-control"
-                     placeholder="cole o ID do usuário"
-                     value={pwd.id}
-                     onChange={e=>setPwd({...pwd, id:e.target.value})}/>
+              <input
+                className="form-control"
+                placeholder="cole o ID do usuário"
+                value={pwd.id}
+                onChange={e=>setPwd({...pwd, id:e.target.value})}
+              />
             </div>
             <div className="col-md-4">
               <label className="form-label">Nova senha</label>
-              <input type="password" className="form-control"
-                     value={pwd.pass}
-                     onChange={e=>setPwd({...pwd, pass:e.target.value})}/>
+              <input
+                type="password"
+                className="form-control"
+                value={pwd.pass}
+                onChange={e=>setPwd({...pwd, pass:e.target.value})}
+              />
             </div>
             <div className="col-md-2">
               <button className="btn btn-warning w-100">Resetar</button>
@@ -220,15 +248,19 @@ export default function AdminDashboard() {
                       </td>
                       <td>{new Date(u.created_at).toLocaleString()}</td>
                       <td>
-                        <button className="btn btn-sm btn-outline-danger"
-                                onClick={() => deleteUser(u.id)}>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => deleteUser(u.id)}
+                        >
                           Excluir
                         </button>
                       </td>
                     </tr>
                   ))}
                   {!list.length && (
-                    <tr><td colSpan="6" className="text-muted">Nenhum usuário.</td></tr>
+                    <tr>
+                      <td colSpan="6" className="text-muted">Nenhum usuário.</td>
+                    </tr>
                   )}
                 </tbody>
               </table>
