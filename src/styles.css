@@ -12,7 +12,10 @@
 @layer base {
   h1 { @apply text-2xl font-bold; }
   h2 { @apply text-lg font-semibold; }
-  body { @apply text-slate-800; }
+  body { 
+    @apply text-slate-800;
+    background-color: var(--brand-100);
+  }
 }
 
 /* Componentes reutilizáveis */
@@ -35,7 +38,8 @@
            px-4 py-2 text-sm font-medium hover:bg-slate-50 transition;
   }
   .btn-primary {
-    @apply btn bg-[var(--brand)] text-white border-transparent hover:bg-black;
+    @apply btn text-white border-transparent hover:bg-black;
+    background-color: var(--brand);
   }
   .btn-ghost { @apply btn border-transparent hover:bg-slate-100; }
 
