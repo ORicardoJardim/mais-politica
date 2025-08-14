@@ -2,10 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Paleta simples */
+:root {
+  --brand: #111827; /* slate-900 */
+  --brand-100: #f1f5f9; /* slate-100 */
+}
+
+/* Tipografia base */
+@layer base {
+  h1 { @apply text-2xl font-bold; }
+  h2 { @apply text-lg font-semibold; }
+  body { @apply text-slate-800; }
+}
+
+/* Componentes reutilizáveis */
 @layer components {
-  .input { @apply w-full px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-gray-300 bg-white; }
-  .btn-primary { @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white hover:opacity-90; }
-  .card { @apply rounded-2xl border bg-white p-4 shadow-sm; }
-  .icon-btn { @apply p-2 rounded-lg hover:bg-gray-100 text-gray-600; }
-  .label { @apply text-sm text-gray-700 space-y-1; }
+  .container-app { @apply max-w-7xl mx-auto px-4; }
+
+  .card { @apply bg-white border border-slate-200 rounded-2xl shadow-sm; }
+  .card-body { @apply p-5; }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 outline-none
+           focus:ring-2 focus:ring-slate-300;
+  }
+
+  .select { @apply input; }
+  .textarea { @apply input min-h-[84px]; }
+
+  .btn {
+    @apply inline-flex items-center justify-center rounded-xl border border-slate-300
+           px-4 py-2 text-sm font-medium hover:bg-slate-50 transition;
+  }
+  .btn-primary {
+    @apply btn bg-[var(--brand)] text-white border-transparent hover:bg-black;
+  }
+  .btn-ghost { @apply btn border-transparent hover:bg-slate-100; }
+
+  .pill { @apply inline-flex items-center rounded-full text-xs px-2 py-0.5 border; }
+
+  .header {
+    @apply w-full border-b bg-white/70 backdrop-blur;
+  }
+  .header-inner {
+    @apply container-app py-3 flex items-center justify-between;
+  }
+  .brand {
+    @apply text-lg font-semibold tracking-tight;
+  }
 }
