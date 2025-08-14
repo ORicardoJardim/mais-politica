@@ -60,6 +60,12 @@ export default function Navbar() {
               Entrar
             </Link>
           )}
+          {user && (
+             <Link className="px-3 py-2 rounded-xl border hover:bg-gray-50" to="/conta">
+             Conta
+            </Link>
+        )}
+
         </nav>
       </div>
     </header>

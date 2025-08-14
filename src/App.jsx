@@ -52,7 +52,10 @@ export default function App() {
      
         <Route path="/demandas" element={
           <RequireAuth><Demandas /></RequireAuth>
-} />  
+        }/>  
+
+        <Route path="/conta" element={<RequireAuth><Conta /></RequireAuth>} />
+
       </Routes>
     </>
   )
