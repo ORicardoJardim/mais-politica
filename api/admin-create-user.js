@@ -1,4 +1,3 @@
-// api/admin-create-user.js
 import { createClient } from '@supabase/supabase-js'
 
 export default async function handler(req, res) {
@@ -12,16 +11,13 @@ export default async function handler(req, res) {
   const service = process.env.SUPABASE_SERVICE_ROLE
   if (!url || !service) return res.status(500).json({ error: 'Env faltando' })
 
-  // cliente com service_role (server-side apenas!)
   const admin = createClient(url, service)
 
-  // 1) cria usuário no Auth
   const { data, error } = await admin.auth.admin.createUser({
     email, password, email_confirm: true, user_metadata: { name }
   })
   if (error) return res.status(400).json({ error: error.message })
 
-  // 2) define role no profile
   const userId = data.user.id
   const { error: pErr } = await admin.from('profiles')
     .update({ email, name, role })
