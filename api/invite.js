@@ -1,78 +1,90 @@
-// api/invite.js
-import { userClient, serviceClient } from './_utils.js'
+// pages/api/invite.js
+import { supabase } from '../../utils/supabaseClient'
 
 export default async function handler(req, res) {
-  const supaUser = userClient(req)
-  const svc = serviceClient()
+  const { action } = req.query
 
   try {
-    const url = new URL(req.url, 'http://x')
-    const action = url.searchParams.get('action') // list|create|cancel|accept
-
     if (action === 'list') {
-      if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
-      const org_id = url.searchParams.get('org_id')
+      const { org_id } = req.query
       if (!org_id) return res.status(400).json({ error: 'org_id é obrigatório' })
-      const { data: isAdmin } = await supaUser.rpc('is_org_admin', { p_org: org_id })
-      if (!isAdmin) return res.status(403).json({ error: 'Sem permissão' })
-      const { data, error } = await svc.from('invites').select('*').eq('org_id', org_id).order('created_at', { ascending: false })
-      if (error) return res.status(400).json({ error: error.message })
-      const base = process.env.SITE_URL || url.origin
-      const items = (data || []).map(v => ({
-        ...v,
-        link: `${base}/accept-invite?token=${v.token}`
-      }))
-      return res.status(200).json({ items })
+
+      const { data, error } = await supabase
+        .from('invites')
+        .select('*')
+        .eq('org_id', org_id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return res.status(200).json({ items: data })
     }
 
     if (action === 'create') {
-      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-      const { org_id, email, role } = req.body || {}
-      if (!org_id || !email || !role) return res.status(400).json({ error: 'org_id, email e role são obrigatórios' })
-      const { data: isAdmin } = await supaUser.rpc('is_org_admin', { p_org: org_id })
-      if (!isAdmin) return res.status(403).json({ error: 'Sem permissão' })
-      const { data, error } = await svc.from('invites').insert({ org_id, email, role }).select('*').single()
-      if (error) return res.status(400).json({ error: error.message })
-      const base = process.env.SITE_URL || (new URL(req.url, 'http://x')).origin
-      const link = `${base}/accept-invite?token=${data.token}`
-      return res.status(200).json({ ok: true, token: data.token, link })
+      const { org_id, email, role } = req.body
+      if (!org_id || !email) return res.status(400).json({ error: 'Dados incompletos' })
+
+      const token = crypto.randomUUID()
+      const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 dias
+      const link = `${process.env.NEXT_PUBLIC_SITE_URL}/accept-invite/${token}`
+
+      const { error } = await supabase
+        .from('invites')
+        .insert([{ org_id, email, role, token, link, expires_at }])
+
+      if (error) throw error
+      return res.status(200).json({ link })
     }
 
     if (action === 'cancel') {
-      if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
-      const { token, org_id } = req.body || {}
-      if (!token || !org_id) return res.status(400).json({ error: 'token e org_id são obrigatórios' })
-      const { data: isAdmin } = await supaUser.rpc('is_org_admin', { p_org: org_id })
-      if (!isAdmin) return res.status(403).json({ error: 'Sem permissão' })
-      const { error } = await svc.from('invites').delete().eq('token', token).eq('org_id', org_id)
-      if (error) return res.status(400).json({ error: error.message })
-      return res.status(200).json({ ok: true })
+      const { token, org_id } = req.body
+      if (!token || !org_id) return res.status(400).json({ error: 'Dados incompletos' })
+
+      const { error } = await supabase
+        .from('invites')
+        .delete()
+        .eq('token', token)
+        .eq('org_id', org_id)
+
+      if (error) throw error
+      return res.status(200).json({ success: true })
     }
 
     if (action === 'accept') {
-      if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
-      const token = (req.method === 'GET')
-        ? new URL(req.url, 'http://x').searchParams.get('token')
-        : req.body?.token
-      if (!token) return res.status(400).json({ error: 'token é obrigatório' })
-      const { data: { user } } = await supaUser.auth.getUser()
-      if (!user) return res.status(401).json({ error: 'Não autenticado' })
-      const { data: inv, error: iErr } = await svc.from('invites').select('*').eq('token', token).single()
-      if (iErr) return res.status(400).json({ error: iErr.message })
-      if (new Date(inv.expires_at) < new Date()) return res.status(400).json({ error: 'Convite expirado' })
-      if (inv.email.toLowerCase() !== (user.email || '').toLowerCase()) {
-        return res.status(400).json({ error: 'E-mail do convite não corresponde ao seu login' })
-      }
-      const { error: mErr } = await svc
-        .from('memberships')
-        .upsert({ org_id: inv.org_id, user_id: user.id, role: inv.role }, { onConflict: 'org_id,user_id' })
-      if (mErr) return res.status(400).json({ error: mErr.message })
-      await svc.from('invites').delete().eq('token', token)
-      return res.status(200).json({ ok: true, org_id: inv.org_id })
+      const { token } = req.body
+      if (!token) return res.status(400).json({ error: 'Token é obrigatório' })
+
+      // Busca convite
+      const { data: invite, error: findError } = await supabase
+        .from('invites')
+        .select('*')
+        .eq('token', token)
+        .single()
+
+      if (findError || !invite) return res.status(404).json({ error: 'Convite não encontrado' })
+      if (new Date(invite.expires_at) < new Date()) return res.status(400).json({ error: 'Convite expirado' })
+
+      // Aqui você precisa pegar o user_id logado (dependendo do auth que você usa)
+      // Exemplo genérico:
+      const { data: { user }, error: userError } = await supabase.auth.getUser(req.headers.authorization?.split(' ')[1])
+      if (userError || !user) return res.status(401).json({ error: 'Não autenticado' })
+
+      // Adiciona usuário à org
+      const { error: insertError } = await supabase
+        .from('org_members')
+        .insert([{ org_id: invite.org_id, user_id: user.id, role: invite.role }])
+
+      if (insertError) throw insertError
+
+      // Deleta convite
+      await supabase.from('invites').delete().eq('token', token)
+
+      return res.status(200).json({ success: true })
     }
 
-    return res.status(400).json({ error: 'action inválida' })
-  } catch (e) {
-    return res.status(400).json({ error: e.message || 'Erro' })
+    return res.status(400).json({ error: 'Ação inválida' })
+
+  } catch (err) {
+    console.error(err)
+    return res.status(500).json({ error: err.message })
   }
 }

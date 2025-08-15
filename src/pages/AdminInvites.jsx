@@ -14,16 +14,19 @@ export default function AdminInvites() {
   const [error, setError] = useState('')
 
   async function fetchInvites() {
-    setError(''); setLoading(true)
+    setError('')
+    setLoading(true)
     try {
       if (!currentOrgId) { setList([]); return }
-      const r = await fetch(`/api/invite-list?org_id=${currentOrgId}`)
+      const r = await fetch(`/api/invite?action=list&org_id=${currentOrgId}`)
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Falha ao listar convites')
       setList(j.items || [])
     } catch (e) {
       setError(e.message)
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchInvites() }, [currentOrgId])
@@ -32,18 +35,19 @@ export default function AdminInvites() {
     e.preventDefault()
     if (!currentOrgId) return alert('Selecione um gabinete')
     if (!isAdmin) return alert('Apenas admins podem convidar')
-    setError(''); setSubmitting(true)
+    setError('')
+    setSubmitting(true)
     try {
-      const r = await fetch('/api/invite-create', {
+      const r = await fetch('/api/invite?action=create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ org_id: currentOrgId, email, role })
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Erro ao criar convite')
-      setEmail(''); setRole('user')
+      setEmail('')
+      setRole('user')
       await fetchInvites()
-      // já copia automaticamente
       try {
         await navigator.clipboard.writeText(j.link)
         alert('Convite criado e link copiado!')
@@ -58,8 +62,12 @@ export default function AdminInvites() {
   }
 
   const copy = async (text) => {
-    try { await navigator.clipboard.writeText(text); alert('Link copiado!') }
-    catch { alert('Não foi possível copiar. Copie manualmente.') }
+    try {
+      await navigator.clipboard.writeText(text)
+      alert('Link copiado!')
+    } catch {
+      alert('Não foi possível copiar. Copie manualmente.')
+    }
   }
 
   return (
@@ -83,7 +91,7 @@ export default function AdminInvites() {
         </div>
       )}
 
-      {/* Formulário (desabilitado se não for admin) */}
+      {/* Formulário */}
       <form
         onSubmit={createInvite}
         className="bg-white border rounded-2xl shadow-sm p-5 grid gap-3 md:grid-cols-4"
@@ -93,13 +101,13 @@ export default function AdminInvites() {
           type="email"
           placeholder="email@exemplo.com"
           value={email}
-          onChange={e=>setEmail(e.target.value)}
+          onChange={e => setEmail(e.target.value)}
           disabled={!isAdmin || !currentOrgId || submitting}
         />
         <select
           className="input"
           value={role}
-          onChange={e=>setRole(e.target.value)}
+          onChange={e => setRole(e.target.value)}
           disabled={!isAdmin || !currentOrgId || submitting}
         >
           <option value="user">user</option>
@@ -133,43 +141,50 @@ export default function AdminInvites() {
               </thead>
               <tbody>
                 {list.map(it => {
-                    const expired = new Date(it.expires_at) < new Date()
-                    return (
+                  const expired = new Date(it.expires_at) < new Date()
+                  return (
                     <tr key={it.token} className={expired ? 'opacity-60' : ''}>
-                        <td>{it.email}</td>
-                        <td>{it.role}</td>
-                        <td>
+                      <td>{it.email}</td>
+                      <td>{it.role}</td>
+                      <td>
                         {new Date(it.expires_at).toLocaleString()}
-                        {expired && <span className="ml-2 text-xs px-2 py-0.5 rounded-full border bg-slate-50">expirado</span>}
-                        </td>
-                        <td className="break-all text-xs">{it.link}</td>
-                        <td className="flex gap-2">
-                        <button className="btn" onClick={() => copy(it.link)} disabled={expired}>Copiar</button>
+                        {expired && (
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded-full border bg-slate-50">
+                            expirado
+                          </span>
+                        )}
+                      </td>
+                      <td className="break-all text-xs">{it.link}</td>
+                      <td className="flex gap-2">
+                        <button className="btn" onClick={() => copy(it.link)} disabled={expired}>
+                          Copiar
+                        </button>
                         <button
-                            className="btn"
-                            onClick={async () => {
+                          className="btn"
+                          onClick={async () => {
                             if (!confirm('Cancelar este convite?')) return
-                            const r = await fetch('/api/invite-cancel', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ token: it.token, org_id: currentOrgId })
+                            const r = await fetch('/api/invite?action=cancel', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ token: it.token, org_id: currentOrgId })
                             })
                             const j = await r.json()
                             if (!r.ok) return alert(j.error || 'Falha ao cancelar')
                             fetchInvites()
-                            }}
+                          }}
                         >
-                            Cancelar
+                          Cancelar
                         </button>
-                        </td>
+                      </td>
                     </tr>
-                    )
+                  )
                 })}
                 {!list.length && (
-                    <tr><td colSpan="5" className="text-slate-500">Nenhum convite.</td></tr>
+                  <tr>
+                    <td colSpan="5" className="text-slate-500">Nenhum convite.</td>
+                  </tr>
                 )}
-            </tbody>
-
+              </tbody>
             </table>
           </div>
         )}

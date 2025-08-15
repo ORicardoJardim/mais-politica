@@ -1,44 +1,43 @@
 // src/pages/AcceptInvite.jsx
 import React, { useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabaseClient'
-import { useAuth } from '../context/AuthContext'
-import { useOrg } from '../context/OrgContext'
+import { useParams, useNavigate } from 'react-router-dom'
 
 export default function AcceptInvite() {
+  const { token } = useParams()
   const navigate = useNavigate()
-  const { search } = useLocation()
-  const { user } = useAuth()
-  const { setCurrentOrgId } = useOrg()
-  const [msg, setMsg] = useState('Validando convite...')
-  const token = new URLSearchParams(search).get('token')
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    async function run() {
-      if (!token) { setMsg('Token ausente.'); return }
-      // precisa estar logado: se não, força Google e volta pra cá
-      if (!user) {
-        await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: { redirectTo: window.location.href }
+    async function accept() {
+      setLoading(true)
+      setError('')
+      try {
+        const r = await fetch('/api/invite?action=accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
         })
-        return
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || 'Falha ao aceitar convite')
+        setSuccess(true)
+        setTimeout(() => navigate('/'), 2000)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
       }
-      // aceita convite
-      const r = await fetch(`/api/invite-accept?token=${token}`)
-      const j = await r.json()
-      if (!r.ok) { setMsg(j.error || 'Falha ao aceitar convite.'); return }
-      setCurrentOrgId(j.org_id) // entra direto no gabinete
-      setMsg('Convite aceito! Redirecionando...')
-      setTimeout(() => navigate('/', { replace: true }), 800)
     }
-    run()
-  }, [user, token, navigate, setCurrentOrgId])
+    accept()
+  }, [token, navigate])
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-3">Aceitar convite</h1>
-      <p className="text-slate-700">{msg}</p>
+    <div className="max-w-lg mx-auto px-4 py-10 text-center">
+      {loading && <p>Processando convite…</p>}
+      {error && <p className="text-red-600">{error}</p>}
+      {success && <p className="text-green-600">Convite aceito! Redirecionando…</p>}
     </div>
   )
 }
