@@ -9,6 +9,7 @@ import Conta from './pages/Conta'
 import AdminInvites from './pages/AdminInvites'
 import SuperAdminOrgs from './pages/SuperAdminOrgs'
 import AcceptInvite from './pages/AcceptInvite'
+import { useOrg } from './context/OrgContext'
 
 function Dashboard() {
   return (
@@ -34,10 +35,21 @@ function RequireGuest({ children }) {
 }
 
 function RequireAdmin({ children }) {
-  const { profile } = useAuth() // <- PEGA profile AQUI
-  if (!profile) return <div className="max-w-7xl mx-auto px-4 py-6">Carregando…</div>
-  if (profile.role !== 'admin' && !profile.is_super_admin) return <Navigate to="/" replace />
-  return children
+  const { loading } = useAuth();          // ainda usamos loading da auth
+  const { currentOrg } = useOrg();        // papel agora vem do org atual
+
+  if (loading) {
+    return <div className="max-w-7xl mx-auto px-4 py-6">Carregando…</div>;
+  }
+  // sem org selecionado -> volta
+  if (!currentOrg) {
+    return <Navigate to="/" replace />;
+  }
+  // não é admin do org atual -> volta
+  if (currentOrg.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  return children;
 }
 
 export default function App() {
@@ -49,7 +61,7 @@ export default function App() {
         <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/demandas" element={<RequireAuth><Demandas /></RequireAuth>} />
         <Route path="/conta" element={<RequireAuth><Conta /></RequireAuth>} />
-        <Route path="/admin" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>} />
+        <Route path="/admin" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>}/>
         <Route path="/admin/convites" element={<RequireAuth><RequireAdmin><AdminInvites /></RequireAdmin></RequireAuth>} />
         <Route path="/super/orgs" element={<RequireAuth><SuperAdminOrgs /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
