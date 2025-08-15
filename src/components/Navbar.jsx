@@ -67,7 +67,8 @@ export default function Navbar() {
               {/* link de Admin só se o papel do gabinete atual for admin */}
               {currentOrg?.role === 'admin' && item('/admin', 'Admin')}
               {/* exemplo opcional: super admin global */}
-              {profile?.is_super_admin && item('/super/orgs', 'Super')}
+              {profile?.is_super_admin && item('/super', 'Owner')}
+
 
               <button onClick={handleLogout} className="px-3 py-2 rounded-full border border-slate-200 hover:bg-slate-50 transition">
                 Sair

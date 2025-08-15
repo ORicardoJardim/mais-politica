@@ -98,14 +98,55 @@ export default async function handler(req, res) {
     }
 
     // ---------- AÇÃO: listar gabinetes ----------
-    if (method === 'GET' && (action === '' || action === 'list')) {
-      const { data, error } = await svc
-        .from('orgs')
-        .select('org_id,name,created_at')
-        .order('created_at', { ascending: false })
-      if (error) return bad(res, `list error: ${error.message}`, 500)
-      return ok(res, { items: data || [] })
-    }
+    // ...código de imports e verificação de super admin acima
+
+if (req.method === 'GET') {
+  const action = req.query.action || 'stats';
+
+  if (action === 'list') {
+    // ⚠️ AQUI: selecione 'id' e faça alias para 'org_id'
+    const { data, error } = await svc
+      .from('orgs')
+      .select('id, name, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(400).json({ error: error.message });
+
+    // mapeia para o formato esperado pelo front
+    const items = (data || []).map(o => ({
+      org_id: o.id,            // alias
+      name: o.name,
+      created_at: o.created_at,
+    }));
+
+    return res.status(200).json({ items });
+  }
+
+  if (action === 'stats') {
+    // permanece como está
+    const [{ count: orgsCount }] = await Promise.all([
+      svc.from('orgs').select('*', { count: 'exact', head: true }),
+    ]);
+    const { count: usersCount } = await svc.from('profiles').select('*', { count: 'exact', head: true });
+    const { count: demandasCount } = await svc.from('demandas').select('*', { count: 'exact', head: true });
+    const { count: membershipsCount } = await svc.from('memberships').select('*', { count: 'exact', head: true });
+
+    return res.status(200).json({
+      counts: {
+        orgs: orgsCount ?? 0,
+        users: usersCount ?? 0,
+        demandas: demandasCount ?? 0,
+        memberships: membershipsCount ?? 0,
+      },
+    });
+  }
+
+  return res.status(400).json({ error: 'Invalid action' });
+}
+
+// DELETE mantém igual; ele recebe { org_id } e usa nos deletes
+// ...
+
 
     // ---------- AÇÃO: excluir gabinete ----------
     if (method === 'DELETE' && (action === '' || action === 'delete')) {

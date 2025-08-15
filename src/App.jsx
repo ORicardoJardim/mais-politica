@@ -7,9 +7,10 @@ import { useAuth } from './context/AuthContext'
 import Demandas from './pages/Demandas'
 import Conta from './pages/Conta'
 import AdminInvites from './pages/AdminInvites'
-import SuperAdminOrgs from './pages/SuperAdminOrgs'
 import AcceptInvite from './pages/AcceptInvite'
 import { useOrg } from './context/OrgContext'
+import SuperDashboard from './pages/SuperDashboard'
+
 
 function Dashboard() {
   return (
@@ -63,9 +64,12 @@ export default function App() {
         <Route path="/conta" element={<RequireAuth><Conta /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>}/>
         <Route path="/admin/convites" element={<RequireAuth><RequireAdmin><AdminInvites /></RequireAdmin></RequireAuth>} />
-        <Route path="/super/orgs" element={<RequireAuth><SuperAdminOrgs /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
         <Route path="/accept-invite" element={<RequireAuth><AcceptInvite /></RequireAuth>} />
+        <Route path="/super" element={<RequireAuth><SuperDashboard /></RequireAuth>} />
+        <Route path="/super/orgs" element={<Navigate to="/super" replace />} />
+
+
       </Routes>
     </>
   )
