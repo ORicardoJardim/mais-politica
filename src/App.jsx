@@ -8,6 +8,7 @@ import Demandas from './pages/Demandas'
 import Conta from './pages/Conta'
 import AdminInvites from './pages/AdminInvites'
 import SuperAdminOrgs from './pages/SuperAdminOrgs'
+import AcceptInvite from './pages/AcceptInvite'
 
 function Dashboard() {
   return (
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="/admin/convites" element={<RequireAuth><RequireAdmin><AdminInvites /></RequireAdmin></RequireAuth>} />
         <Route path="/super/orgs" element={<RequireAuth><SuperAdminOrgs /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/accept-invite" element={<RequireAuth><AcceptInvite /></RequireAuth>} />
       </Routes>
     </>
   )
