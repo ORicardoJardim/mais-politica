@@ -10,6 +10,7 @@ import AdminInvites from './pages/AdminInvites'
 import AcceptInvite from './pages/AcceptInvite'
 import { useOrg } from './context/OrgContext'
 import SuperDashboard from './pages/SuperDashboard'
+import CreateOrg from './pages/CreateOrg'
 
 
 function Dashboard() {
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/accept-invite" element={<RequireAuth><AcceptInvite /></RequireAuth>} />
         <Route path="/super" element={<RequireAuth><SuperDashboard /></RequireAuth>} />
         <Route path="/super/orgs" element={<Navigate to="/super" replace />} />
+        <Route path="/orgs/new" element={<RequireAuth> <CreateOrg /></RequireAuth>}/>
 
 
       </Routes>
