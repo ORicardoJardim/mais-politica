@@ -149,20 +149,41 @@ if (req.method === 'GET') {
 
 
     // ---------- AÇÃO: excluir gabinete ----------
-    if (method === 'DELETE' && (action === '' || action === 'delete')) {
-      const org_id = req.body?.org_id
-      if (!org_id) return bad(res, 'org_id is required', 400)
+    // ...imports, serviceClient(), assertSuperAdmin() etc. acima
 
-      // apaga dependências (ajuste conforme suas FKs / ON DELETE CASCADE)
-      await svc.from('memberships').delete().eq('org_id', org_id)
-      await svc.from('invites').delete().eq('org_id', org_id)
-      await svc.from('demandas').delete().eq('org_id', org_id)
+if (req.method === 'DELETE') {
+  // body: { org_id: "..." }
+  try {
+    const { org_id } = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (!org_id) return res.status(400).json({ error: 'org_id is required' });
 
-      const { error } = await svc.from('orgs').delete().eq('org_id', org_id)
-      if (error) return bad(res, `delete error: ${error.message}`, 500)
+    const check = await assertSuperAdmin(req);
+    if (!check.ok) return res.status(check.status).json({ error: check.msg });
 
-      return ok(res, { ok: true })
-    }
+    const svc = serviceClient();
+
+    // Apaga filhos vinculados por org_id
+    let r;
+
+    r = await svc.from('memberships').delete().eq('org_id', org_id);
+    if (r.error) return res.status(400).json({ error: r.error.message });
+
+    r = await svc.from('invites').delete().eq('org_id', org_id);
+    if (r.error) return res.status(400).json({ error: r.error.message });
+
+    r = await svc.from('demandas').delete().eq('org_id', org_id);
+    if (r.error) return res.status(400).json({ error: r.error.message });
+
+    // Apaga a org pela coluna id (⚠️ aqui estava org_id)
+    r = await svc.from('orgs').delete().eq('id', org_id);
+    if (r.error) return res.status(400).json({ error: r.error.message });
+
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message || 'delete failed' });
+  }
+}
+
 
     return bad(res, 'Unsupported method/action', 405)
   } catch (e) {
