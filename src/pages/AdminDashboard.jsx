@@ -2,17 +2,15 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabaseClient'
+import { Link } from 'react-router-dom'
+import { useOrg } from '../context/OrgContext'
 
-// Base das rotas de API:
-// - Produção ou `vercel dev`: pode ficar vazio (usa o mesmo host).
-// - Vite (`npm run dev`): defina VITE_API_BASE no .env apontando para seu deploy Vercel.
+// Base de API (prod usa host atual)
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 async function api(path, options = {}) {
-  // pega o token atual do usuário logado
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
-
   const url = `${API_BASE}${path}`
 
   const r = await fetch(url, {
@@ -23,36 +21,30 @@ async function api(path, options = {}) {
       Authorization: `Bearer ${token}`,
     },
   })
-
   const text = await r.text()
   let payload = {}
-  try {
-    payload = text ? JSON.parse(text) : {}
-  } catch {
-    // resposta não-JSON (ex.: HTML de erro). Mantém text para mensagem.
-    payload = { raw: text }
-  }
-
-  if (!r.ok) {
-    const msg = payload?.error || payload?.raw || 'Erro na API'
-    throw new Error(msg)
-  }
-
+  try { payload = text ? JSON.parse(text) : {} } catch { payload = { raw: text } }
+  if (!r.ok) throw new Error(payload?.error || payload?.raw || 'Erro na API')
   return payload
 }
 
 export default function AdminDashboard() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
+  const { currentOrgId, currentOrg } = useOrg()
+
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // criação direta (a gente recomenda convites, mas deixamos aqui)
   const [createForm, setCreateForm] = useState({ name:'', email:'', password:'', role:'user' })
-  const [pwd, setPwd] = useState({ id:'', pass:'' }) // reset senha
+  const [pwd, setPwd] = useState({ id:'', pass:'' }) // reset de senha (super admin)
 
   async function fetchUsers() {
     setError(''); setLoading(true)
     try {
-      const j = await api('/api/admin-list-users')
+      if (!currentOrgId) { setList([]); return }
+      const j = await api(`/api/admin?action=list&org_id=${currentOrgId}`)
       setList(j.users || [])
     } catch (e) {
       setError(e.message)
@@ -61,19 +53,19 @@ export default function AdminDashboard() {
     }
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => { fetchUsers() }, [currentOrgId])
 
   async function createUser(e) {
     e.preventDefault()
     setError('')
     try {
-      await api('/api/admin-create-user', {
+      await api('/api/admin?action=create', {
         method: 'POST',
-        body: JSON.stringify(createForm),
+        body: JSON.stringify({ ...createForm, org_id: currentOrgId }),
       })
       setCreateForm({ name:'', email:'', password:'', role:'user' })
       await fetchUsers()
-      alert('Usuário criado com sucesso!')
+      alert('Usuário criado e vinculado ao gabinete!')
     } catch (e) {
       setError(e.message)
     }
@@ -82,9 +74,9 @@ export default function AdminDashboard() {
   async function changeRole(id, role) {
     setError('')
     try {
-      await api('/api/admin-update-user', {
+      await api('/api/admin?action=update', {
         method: 'POST',
-        body: JSON.stringify({ id, role }),
+        body: JSON.stringify({ id, role, org_id: currentOrgId }),
       })
       await fetchUsers()
     } catch (e) {
@@ -97,7 +89,7 @@ export default function AdminDashboard() {
     if (!pwd.id || !pwd.pass) return
     setError('')
     try {
-      await api('/api/admin-reset-password', {
+      await api('/api/admin?action=reset', {
         method: 'POST',
         body: JSON.stringify({ id: pwd.id, password: pwd.pass }),
       })
@@ -109,12 +101,12 @@ export default function AdminDashboard() {
   }
 
   async function deleteUser(id) {
-    if (!confirm('Tem certeza que deseja excluir este usuário?')) return
+    if (!confirm('Remover este usuário do gabinete?')) return
     setError('')
     try {
-      await api('/api/admin-delete-user', {
+      await api('/api/admin?action=remove', {
         method: 'POST',
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, org_id: currentOrgId }),
       })
       await fetchUsers()
     } catch (e) {
@@ -122,16 +114,33 @@ export default function AdminDashboard() {
     }
   }
 
+  if (!currentOrgId) {
+    return (
+      <div className="container py-4">
+        <h1 className="h4 mb-3">Painel do Administrador</h1>
+        <div className="alert alert-warning">
+          Selecione um gabinete no topo para gerenciar usuários.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="container py-4">
-      <h1 className="h4 mb-3">Painel do Administrador</h1>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h1 className="h4 mb-0">Painel do Administrador</h1>
+        <Link to="/admin/convites" className="btn btn-primary">
+          Gerenciar convites
+        </Link>
+      </div>
+
       <p className="text-muted mb-4">
-        Logado como: <strong>{user?.email}</strong> • Role: <strong>{profile?.role}</strong>
+        Gabinete atual: <strong>{currentOrg?.name}</strong>
       </p>
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      {/* Criar usuário */}
+      {/* Criar usuário diretamente (alternativa aos convites) */}
       <div className="card mb-4">
         <div className="card-body">
           <h5 className="card-title mb-3">Criar novo usuário</h5>
@@ -163,7 +172,7 @@ export default function AdminDashboard() {
               />
             </div>
             <div className="col-md-2">
-              <label className="form-label">Papel</label>
+              <label className="form-label">Papel (no gabinete)</label>
               <select
                 className="form-select"
                 value={createForm.role}
@@ -180,7 +189,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Reset de senha */}
+      {/* Reset de senha (somente super admin no backend) */}
       <div className="card mb-4">
         <div className="card-body">
           <h5 className="card-title mb-3">Resetar senha</h5>
@@ -211,10 +220,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Tabela de usuários */}
+      {/* Tabela de usuários (membership do gabinete atual) */}
       <div className="card">
         <div className="card-body">
-          <h5 className="card-title mb-3">Usuários</h5>
+          <h5 className="card-title mb-3">Usuários do gabinete</h5>
           {loading ? (
             <div>Carregando…</div>
           ) : (
@@ -222,10 +231,9 @@ export default function AdminDashboard() {
               <table className="table align-middle">
                 <thead>
                   <tr>
-                    <th>ID</th>
                     <th>Nome</th>
                     <th>E-mail</th>
-                    <th>Role</th>
+                    <th>Função</th>
                     <th>Criado em</th>
                     <th>Ações</th>
                   </tr>
@@ -233,7 +241,6 @@ export default function AdminDashboard() {
                 <tbody>
                   {list.map(u => (
                     <tr key={u.id}>
-                      <td className="text-truncate" style={{maxWidth:180}} title={u.id}>{u.id}</td>
                       <td>{u.name || '—'}</td>
                       <td>{u.email}</td>
                       <td>
@@ -246,20 +253,20 @@ export default function AdminDashboard() {
                           <option value="admin">admin</option>
                         </select>
                       </td>
-                      <td>{new Date(u.created_at).toLocaleString()}</td>
+                      <td>{u.created_at ? new Date(u.created_at).toLocaleString() : '—'}</td>
                       <td>
                         <button
                           className="btn btn-sm btn-outline-danger"
                           onClick={() => deleteUser(u.id)}
                         >
-                          Excluir
+                          Remover do gabinete
                         </button>
                       </td>
                     </tr>
                   ))}
                   {!list.length && (
                     <tr>
-                      <td colSpan="6" className="text-muted">Nenhum usuário.</td>
+                      <td colSpan="5" className="text-muted">Nenhum usuário neste gabinete.</td>
                     </tr>
                   )}
                 </tbody>
