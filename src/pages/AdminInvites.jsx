@@ -1,6 +1,36 @@
 // src/pages/AdminInvites.jsx
 import React, { useEffect, useState } from 'react'
 import { useOrg } from '../context/OrgContext'
+import { supabase } from '../lib/supabaseClient'
+
+// Base (em produção pode ficar vazio, usa o mesmo host)
+const API_BASE = import.meta.env.VITE_API_BASE || ''
+
+async function api(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  const url = `${API_BASE}${path}`
+
+  const r = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+
+  const text = await r.text()
+  let payload
+  try { payload = text ? JSON.parse(text) : {} } 
+  catch { payload = { raw: text } }
+
+  if (!r.ok) {
+    const msg = payload?.error || payload?.raw || 'Erro na API'
+    throw new Error(msg)
+  }
+  return payload
+}
 
 export default function AdminInvites() {
   const { currentOrgId, currentOrg } = useOrg()
@@ -14,13 +44,10 @@ export default function AdminInvites() {
   const [error, setError] = useState('')
 
   async function fetchInvites() {
-    setError('')
-    setLoading(true)
+    setError(''); setLoading(true)
     try {
       if (!currentOrgId) { setList([]); return }
-      const r = await fetch(`/api/invite?action=list&org_id=${currentOrgId}`)
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Falha ao listar convites')
+      const j = await api(`/api/invite?action=list&org_id=${encodeURIComponent(currentOrgId)}`)
       setList(j.items || [])
     } catch (e) {
       setError(e.message)
@@ -35,24 +62,19 @@ export default function AdminInvites() {
     e.preventDefault()
     if (!currentOrgId) return alert('Selecione um gabinete')
     if (!isAdmin) return alert('Apenas admins podem convidar')
-    setError('')
-    setSubmitting(true)
+    setError(''); setSubmitting(true)
     try {
-      const r = await fetch('/api/invite?action=create', {
+      const j = await api('/api/invite?action=create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: currentOrgId, email, role })
+        body: JSON.stringify({ org_id: currentOrgId, email, role }),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || 'Erro ao criar convite')
-      setEmail('')
-      setRole('user')
+      setEmail(''); setRole('user')
       await fetchInvites()
       try {
         await navigator.clipboard.writeText(j.link)
         alert('Convite criado e link copiado!')
       } catch {
-        alert(`Convite criado! Copie o link abaixo na tabela.`)
+        alert('Convite criado! Copie o link na tabela.')
       }
     } catch (e) {
       setError(e.message)
@@ -62,11 +84,20 @@ export default function AdminInvites() {
   }
 
   const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); alert('Link copiado!') }
+    catch { alert('Não foi possível copiar. Copie manualmente.') }
+  }
+
+  async function cancelInvite(token) {
+    if (!confirm('Cancelar este convite?')) return
     try {
-      await navigator.clipboard.writeText(text)
-      alert('Link copiado!')
-    } catch {
-      alert('Não foi possível copiar. Copie manualmente.')
+      await api('/api/invite?action=cancel', {
+        method: 'POST',
+        body: JSON.stringify({ token, org_id: currentOrgId }),
+      })
+      fetchInvites()
+    } catch (e) {
+      alert(e.message)
     }
   }
 
@@ -91,38 +122,29 @@ export default function AdminInvites() {
         </div>
       )}
 
-      {/* Formulário */}
-      <form
-        onSubmit={createInvite}
-        className="bg-white border rounded-2xl shadow-sm p-5 grid gap-3 md:grid-cols-4"
-      >
+      <form onSubmit={createInvite} className="bg-white border rounded-2xl shadow-sm p-5 grid gap-3 md:grid-cols-4">
         <input
           className="input md:col-span-2"
           type="email"
           placeholder="email@exemplo.com"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={e=>setEmail(e.target.value)}
           disabled={!isAdmin || !currentOrgId || submitting}
         />
         <select
           className="input"
           value={role}
-          onChange={e => setRole(e.target.value)}
+          onChange={e=>setRole(e.target.value)}
           disabled={!isAdmin || !currentOrgId || submitting}
         >
           <option value="user">user</option>
           <option value="admin">admin</option>
         </select>
-        <button
-          className="btn-primary"
-          disabled={!isAdmin || !currentOrgId || submitting}
-          title={!isAdmin ? 'Somente admins' : (!currentOrgId ? 'Selecione um gabinete' : undefined)}
-        >
+        <button className="btn-primary" disabled={!isAdmin || !currentOrgId || submitting}>
           {submitting ? 'Enviando…' : 'Convidar'}
         </button>
       </form>
 
-      {/* Lista */}
       <div className="bg-white border rounded-2xl shadow-sm p-5">
         <h2 className="font-semibold mb-3">Convites pendentes</h2>
         {loading ? (
@@ -140,7 +162,7 @@ export default function AdminInvites() {
                 </tr>
               </thead>
               <tbody>
-                {list.map(it => {
+                {list.map((it) => {
                   const expired = new Date(it.expires_at) < new Date()
                   return (
                     <tr key={it.token} className={expired ? 'opacity-60' : ''}>
@@ -149,40 +171,19 @@ export default function AdminInvites() {
                       <td>
                         {new Date(it.expires_at).toLocaleString()}
                         {expired && (
-                          <span className="ml-2 text-xs px-2 py-0.5 rounded-full border bg-slate-50">
-                            expirado
-                          </span>
+                          <span className="ml-2 text-xs px-2 py-0.5 rounded-full border bg-slate-50">expirado</span>
                         )}
                       </td>
                       <td className="break-all text-xs">{it.link}</td>
                       <td className="flex gap-2">
-                        <button className="btn" onClick={() => copy(it.link)} disabled={expired}>
-                          Copiar
-                        </button>
-                        <button
-                          className="btn"
-                          onClick={async () => {
-                            if (!confirm('Cancelar este convite?')) return
-                            const r = await fetch('/api/invite?action=cancel', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ token: it.token, org_id: currentOrgId })
-                            })
-                            const j = await r.json()
-                            if (!r.ok) return alert(j.error || 'Falha ao cancelar')
-                            fetchInvites()
-                          }}
-                        >
-                          Cancelar
-                        </button>
+                        <button className="btn" onClick={() => copy(it.link)} disabled={expired}>Copiar</button>
+                        <button className="btn" onClick={() => cancelInvite(it.token)}>Cancelar</button>
                       </td>
                     </tr>
                   )
                 })}
                 {!list.length && (
-                  <tr>
-                    <td colSpan="5" className="text-slate-500">Nenhum convite.</td>
-                  </tr>
+                  <tr><td colSpan="5" className="text-slate-500">Nenhum convite.</td></tr>
                 )}
               </tbody>
             </table>
