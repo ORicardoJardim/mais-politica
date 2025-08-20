@@ -11,6 +11,13 @@ import AcceptInvite from './pages/AcceptInvite'
 import { useOrg } from './context/OrgContext'
 import SuperDashboard from './pages/SuperDashboard'
 import CreateOrg from './pages/CreateOrg'
+import Eleitores from './pages/Eleitores'
+import Relatorios from './pages/Relatorios'
+import Home from './pages/Home'
+import AdminTools from './pages/AdminTools'
+import Join from './pages/Join'
+
+
 
 
 function Dashboard() {
@@ -59,20 +66,64 @@ export default function App() {
     <>
       <Navbar />
       <Routes>
-        <Route path="/login" element={<RequireGuest><Login /></RequireGuest>} />
-        <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-        <Route path="/demandas" element={<RequireAuth><Demandas /></RequireAuth>} />
-        <Route path="/conta" element={<RequireAuth><Conta /></RequireAuth>} />
-        <Route path="/admin" element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>}/>
-        <Route path="/admin/convites" element={<RequireAuth><RequireAdmin><AdminInvites /></RequireAdmin></RequireAuth>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-        <Route path="/accept-invite" element={<RequireAuth><AcceptInvite /></RequireAuth>} />
-        <Route path="/super" element={<RequireAuth><SuperDashboard /></RequireAuth>} />
-        <Route path="/super/orgs" element={<Navigate to="/super" replace />} />
-        <Route path="/orgs/new" element={<RequireAuth> <CreateOrg /></RequireAuth>}/>
+  {/* Públicas */}
+  <Route
+    path="/login"
+    element={<RequireGuest><Login /></RequireGuest>}
+  />
+
+  {/* Protegidas */}
+  <Route
+    path="/"
+    element={<RequireAuth><Home /></RequireAuth>}
+  />
+  <Route
+    path="/demandas"
+    element={<RequireAuth><Demandas /></RequireAuth>}
+  />
+  <Route
+    path="/eleitores"
+    element={<RequireAuth><Eleitores /></RequireAuth>}
+  />
+  <Route
+    path="/relatorios"
+    element={<RequireAuth><Relatorios /></RequireAuth>}
+  />
+  <Route
+    path="/conta"
+    element={<RequireAuth><Conta /></RequireAuth>}
+  />
+  <Route
+    path="/admin"
+    element={<RequireAuth><RequireAdmin><AdminDashboard /></RequireAdmin></RequireAuth>}
+  />
+  <Route
+    path="/admin/convites"
+    element={<RequireAuth><RequireAdmin><AdminInvites /></RequireAdmin></RequireAuth>}
+  />
+  <Route
+    path="/super"
+    element={<RequireAuth><SuperDashboard /></RequireAuth>}
+  />
+  <Route
+    path="/orgs/new"
+    element={<RequireAuth><CreateOrg /></RequireAuth>}
+  />
+  <Route
+    path="/accept-invite"
+    element={<RequireAuth><AcceptInvite /></RequireAuth>}
+  />
+
+  {/* Fallback */}
+  <Route path="*" element={<Navigate to="/" replace />} />
+
+<Route path="/admin-tools" element={<AdminTools />} />
+
+<Route path="/join" element={<Join />} />
 
 
-      </Routes>
+</Routes>
+
     </>
   )
 }

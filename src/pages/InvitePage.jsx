@@ -13,7 +13,7 @@ export default function InvitePage() {
       return
     }
 
-    const res = await fetch('/api/invite-create', {
+    const res = await fetch('/api/invite?action=create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ org_id: currentOrgId, email, role })

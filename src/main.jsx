@@ -1,19 +1,22 @@
+// src/main.jsx
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import App from './App'
-import './styles.css'
-import { AuthProvider } from './context/AuthContext'
-import OrgProvider from './context/OrgContext' // <-- import novo
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+import './styles.css'
+import App from './App'
+import { AuthProvider } from './context/AuthContext'
+import OrgProvider from './context/OrgContext'  // default import
+
+const rootEl = document.getElementById('root')
+ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <AuthProvider>
-      <OrgProvider> {/* <-- wrapper novo */}
-        <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
+        <OrgProvider>
           <App />
-        </BrowserRouter>
-      </OrgProvider>
-    </AuthProvider>
+        </OrgProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </React.StrictMode>
 )

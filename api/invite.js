@@ -1,5 +1,6 @@
 // /api/invite.js
 import { createClient } from '@supabase/supabase-js'
+import { randomUUID } from 'node:crypto' // <- garante disponibilidade
 
 function serviceClient() {
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
@@ -7,12 +8,14 @@ function serviceClient() {
   if (!url || !key) throw new Error('Missing SUPABASE envs (URL / SERVICE_ROLE)')
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
 }
+
 function anonClient() {
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
   if (!url || !key) throw new Error('Missing SUPABASE envs (ANON)')
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
 }
+
 function ok(res, data) {
   res.setHeader('Content-Type', 'application/json')
   res.status(200).end(JSON.stringify(data ?? {}))
@@ -27,51 +30,55 @@ export default async function handler(req, res) {
     const method = req.method
     const action = (method === 'GET' ? req.query.action : (req.query.action || req.body?.action)) || ''
 
-    // --------- Sessão do usuário -----------
+    // --- Auth do usuário (Bearer) ---
     const authHeader = req.headers.authorization || ''
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
     if (!token) return bad(res, 'No Authorization bearer', 401)
 
     const anon = anonClient()
     const { data: userData, error: userErr } = await anon.auth.getUser(token)
-    if (userErr || !userData?.user) return bad(res, 'Invalid session', 401)
+    if (userErr || !userData?.user) return bad(res, `Invalid session: ${userErr?.message || 'unknown'}`, 401)
     const user = userData.user
 
     const svc = serviceClient()
 
-    // --------- ACCEPT (não exige admin, não exige org_id no query) ----------
+    // --------- ACCEPT (não exige admin) ----------
     if (method === 'GET' && action === 'accept') {
-      const inviteToken = req.query.token
-      if (!inviteToken) return bad(res, 'token is required', 400)
+  const inviteToken = req.query.token
+  if (!inviteToken) return bad(res, 'token is required', 400)
 
-      const nowIso = new Date().toISOString()
-      const { data: inv, error: invErr } = await svc
-        .from('invites')
-        .select('org_id,email,role,expires_at')
-        .eq('token', inviteToken)
-        .maybeSingle()
+  const nowIso = new Date().toISOString()
+  const { data: inv, error: invErr } = await svc
+    .from('invites')
+    .select('org_id,email,role,expires_at')
+    .eq('token', inviteToken)
+    .maybeSingle()
 
-      if (invErr) return bad(res, `invite error: ${invErr.message}`, 500)
-      if (!inv) return bad(res, 'invite not found', 404)
-      if (inv.expires_at && inv.expires_at < nowIso) return bad(res, 'invite expired', 400)
+  if (invErr) return bad(res, `invite error: ${invErr.message}`, 500)
+  if (!inv) return bad(res, 'invite not found', 404)
+  if (inv.expires_at && inv.expires_at < nowIso) return bad(res, 'invite expired', 400)
 
-      // cria/garante membership
-      const { error: upErr } = await svc
-        .from('memberships')
-        .upsert({ org_id: inv.org_id, user_id: user.id, role: inv.role }, { onConflict: 'org_id,user_id' })
-      if (upErr) return bad(res, `membership upsert error: ${upErr.message}`, 500)
+  const { error: upErr } = await svc
+    .from('memberships')
+    .upsert({ org_id: inv.org_id, user_id: user.id, role: inv.role }, { onConflict: 'org_id,user_id' })
+  if (upErr) return bad(res, `membership upsert error: ${upErr.message}`, 500)
 
-      // remove convite
-      await svc.from('invites').delete().eq('token', inviteToken)
+  // apagar convite (sem .catch após await)
+  try {
+    await svc.from('invites').delete().eq('token', inviteToken)
+  } catch (e) {
+    // opcional: logar e seguir
+    // console.warn('delete invite failed:', e)
+  }
 
-      return ok(res, { org_id: inv.org_id, role: inv.role })
-    }
+  return ok(res, { org_id: inv.org_id, role: inv.role })
+}
+
 
     // --------- Ações que exigem ADMIN no org ---------
     const org_id = method === 'GET' ? req.query.org_id : req.body?.org_id
     if (!org_id) return bad(res, 'org_id is required', 400)
 
-    // checar se usuário é admin
     const { data: membership, error: memErr } = await svc
       .from('memberships')
       .select('role')
@@ -101,12 +108,12 @@ export default async function handler(req, res) {
       const { email, role } = req.body || {}
       if (!email || !role) return bad(res, 'email and role are required', 400)
 
-      const tokenUuid = crypto.randomUUID()
+      const tokenUuid = randomUUID() // <- antes estava crypto.randomUUID()
       const expires_at = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString()
 
       const { error } = await svc
         .from('invites')
-        .insert([{ token: tokenUuid, org_id, email, role, expires_at }]) // sem created_by
+        .insert([{ token: tokenUuid, org_id, email, role, expires_at }])
       if (error) return bad(res, `create error: ${error.message}`, 500)
 
       const site = process.env.SITE_URL

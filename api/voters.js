@@ -1,14 +1,16 @@
-// api/voters.js
+// /api/voters.js
 import { createClient } from '@supabase/supabase-js'
-import { assertAdmin, serviceClient } from './_utils' // <- para export CSV (somente admin)
+import { assertAdmin, serviceClient } from './_utils.js' // <-- .js aqui!
 
-// client com token do usuário (RLS)
+// Client com token do usuário (passa pelo RLS)
 function userClient(req) {
-  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const url  = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
   const anon = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
   if (!url || !anon) throw new Error('Missing SUPABASE envs')
+
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+
   return createClient(url, anon, {
     global: { headers: token ? { Authorization: `Bearer ${token}` } : {} },
     auth: { persistSession: false, autoRefreshToken: false },
@@ -28,27 +30,24 @@ export default async function handler(req, res) {
   try {
     const supa = userClient(req)
     const method = req.method
-    const action = (req.query?.action || '').trim()
+    const action = (req.query?.action || '').toString().trim()
 
-    // ===== LISTAR (GET) =====
+    // ===== LISTA (GET) ======================================================
     if (method === 'GET' && !action) {
-      const org_id = (req.query.org_id || '').trim()
+      const org_id = (req.query.org_id || '').toString().trim()
       if (!org_id) return bad(res, 'org_id is required')
-      const q = (req.query.q || '').trim()
-      const tag_id = (req.query.tag_id || '').trim() || null
 
-      const page  = Math.max(1, parseInt(req.query.page || '1', 10))
-      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)))
-      const from  = (page - 1) * limit
-      const to    = from + limit - 1
+      const q       = (req.query.q || '').toString().trim()
+      const tag_id  = (req.query.tag_id || '').toString().trim() || null
+      const page    = Math.max(1, parseInt(req.query.page || '1', 10) || 1)
+      const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10) || 20))
+      const from    = (page - 1) * limit
+      const to      = from + limit - 1
 
-      // se veio tag_id, buscar IDs na pivot voter_tags
+      // Se filtrar por tag, primeiro pega ids na pivot
       let voterIdsByTag = null
       if (tag_id) {
-        const r = await supa
-          .from('voter_tags')
-          .select('voter_id')
-          .eq('tag_id', tag_id)
+        const r = await supa.from('voter_tags').select('voter_id').eq('tag_id', tag_id)
         if (r.error) return bad(res, r.error.message, 400)
         voterIdsByTag = (r.data || []).map(x => x.voter_id)
         if (!voterIdsByTag.length) {
@@ -58,17 +57,20 @@ export default async function handler(req, res) {
 
       let sel = supa
         .from('voters')
-        .select('id, name, phone, city, email, state, address, notes, created_at', { count: 'exact' })
+        .select(
+          // inclui campos do cadastro completo
+          'id, org_id, name, phone, email, city, state, address, zipcode, notes, birthdate, created_at',
+          { count: 'exact' }
+        )
         .eq('org_id', org_id)
 
       if (q) {
         sel = sel.or(
+          // busca simples
           `name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%,city.ilike.%${q}%`
         )
       }
-      if (voterIdsByTag) {
-        sel = sel.in('id', voterIdsByTag)
-      }
+      if (voterIdsByTag) sel = sel.in('id', voterIdsByTag)
 
       sel = sel.order('created_at', { ascending: false }).range(from, to)
 
@@ -77,9 +79,9 @@ export default async function handler(req, res) {
       return ok(res, { items: data || [], total: count ?? 0, page, limit })
     }
 
-    // ===== EXPORT CSV (GET ?action=export) — SOMENTE ADMIN =====
+    // ===== EXPORT CSV (GET ?action=export) — SOMENTE ADMIN ===================
     if (method === 'GET' && action === 'export') {
-      const org_id = (req.query.org_id || '').trim()
+      const org_id = (req.query.org_id || '').toString().trim()
       if (!org_id) return bad(res, 'org_id is required')
 
       // exige admin do gabinete
@@ -87,26 +89,25 @@ export default async function handler(req, res) {
       if (!check.ok) return bad(res, check.msg, check.status)
 
       const svc = serviceClient()
-      const tag_id = (req.query.tag_id || '').trim() || null
+      const tag_id = (req.query.tag_id || '').toString().trim() || null
 
       let voterIdsByTag = null
       if (tag_id) {
-        const r = await svc
-          .from('voter_tags')
-          .select('voter_id')
-          .eq('tag_id', tag_id)
+        const r = await svc.from('voter_tags').select('voter_id').eq('tag_id', tag_id)
         if (r.error) return bad(res, r.error.message, 400)
         voterIdsByTag = (r.data || []).map(x => x.voter_id)
         if (!voterIdsByTag.length) {
           res.setHeader('Content-Type', 'text/csv; charset=utf-8')
           res.setHeader('Content-Disposition', `attachment; filename="eleitores_${org_id}.csv"`)
-          return res.status(200).end('name,phone,email,city,state,address,zipcode,notes,created_at\n')
+          return res
+            .status(200)
+            .end('name,phone,email,city,state,address,zipcode,notes,birthdate,created_at\n')
         }
       }
 
       let q = svc
         .from('voters')
-        .select('name,phone,email,city,state,address,zipcode,notes,created_at,id')
+        .select('name,phone,email,city,state,address,zipcode,notes,birthdate,created_at,id')
         .eq('org_id', org_id)
         .order('created_at', { ascending: false })
 
@@ -115,11 +116,15 @@ export default async function handler(req, res) {
       const { data, error } = await q
       if (error) return bad(res, error.message, 400)
 
-      const header = ['name','phone','email','city','state','address','zipcode','notes','created_at']
-      const rows = (data || []).map(r => header.map(h => {
-        const v = (r[h] ?? '').toString().replace(/"/g,'""')
-        return `"${v}"`
-      }).join(','))
+      const header = ['name','phone','email','city','state','address','zipcode','notes','birthdate','created_at']
+      const rows = (data || []).map(r =>
+        header
+          .map(h => {
+            const v = (r[h] ?? '').toString().replace(/"/g, '""')
+            return `"${v}"`
+          })
+          .join(',')
+      )
       const csv = header.join(',') + '\n' + rows.join('\n')
 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8')
@@ -127,15 +132,29 @@ export default async function handler(req, res) {
       return res.status(200).end(csv)
     }
 
-    // ===== CRIAR (POST) =====
+    // ===== CRIAR (POST) ======================================================
     if (method === 'POST' && !action) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
-      const { org_id, name, phone, city, email, address, state, notes } = body
-      if (!org_id || !name || !phone || !city) return bad(res, 'org_id, name, phone, city are required')
+      const {
+        org_id,
+        name,
+        phone,
+        city,
+        email = null,
+        address = null,
+        state = null,
+        zipcode = null,
+        notes = null,
+        birthdate = null, // novo
+      } = body
+
+      if (!org_id || !name || !phone || !city) {
+        return bad(res, 'org_id, name, phone, city are required')
+      }
 
       const { data, error } = await supa
         .from('voters')
-        .insert([{ org_id, name, phone, city, email, address, state, notes }])
+        .insert([{ org_id, name, phone, city, email, address, state, zipcode, notes, birthdate }])
         .select()
         .single()
 
@@ -143,15 +162,24 @@ export default async function handler(req, res) {
       return ok(res, { item: data })
     }
 
-    // ===== EDITAR (PATCH) =====
+    
+
+    // ===== EDITAR (PATCH) ====================================================
     if (method === 'PATCH' && !action) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
       const { id, ...changes } = body
       if (!id) return bad(res, 'id is required')
 
+      // Sanitiza somente os campos permitidos
+      const allowed = [
+        'name','phone','email','city','state','address','zipcode','notes','birthdate'
+      ]
+      const update = {}
+      for (const k of allowed) if (k in changes) update[k] = changes[k]
+
       const { data, error } = await supa
         .from('voters')
-        .update({ ...changes })
+        .update(update)
         .eq('id', id)
         .select()
         .maybeSingle()
@@ -160,7 +188,7 @@ export default async function handler(req, res) {
       return ok(res, { item: data })
     }
 
-    // ===== EXCLUIR (DELETE) =====
+    // ===== EXCLUIR (DELETE) ==================================================
     if (method === 'DELETE' && !action) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
       const { id } = body
@@ -171,9 +199,9 @@ export default async function handler(req, res) {
       return ok(res, { ok: true })
     }
 
-    // ===== LISTAR TAGS DE UM VOTER =====
+    // ===== LISTAR TAGS DE UM VOTER ===========================================
     if (method === 'GET' && action === 'tags') {
-      const voter_id = (req.query.voter_id || '').trim()
+      const voter_id = (req.query.voter_id || '').toString().trim()
       if (!voter_id) return bad(res, 'voter_id is required')
 
       const { data, error } = await supa
@@ -186,7 +214,7 @@ export default async function handler(req, res) {
       return ok(res, { items })
     }
 
-    // ===== ADICIONAR TAG A UM VOTER =====
+    // ===== ADICIONAR TAG A UM VOTER ==========================================
     if (method === 'POST' && action === 'add_tag') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
       const { voter_id, tag_id } = body
@@ -197,13 +225,18 @@ export default async function handler(req, res) {
       return ok(res, { ok: true })
     }
 
-    // ===== REMOVER TAG DE UM VOTER =====
+    // ===== REMOVER TAG DE UM VOTER ===========================================
     if (method === 'DELETE' && action === 'remove_tag') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
       const { voter_id, tag_id } = body
       if (!voter_id || !tag_id) return bad(res, 'voter_id and tag_id are required')
 
-      const { error } = await supa.from('voter_tags').delete().eq('voter_id', voter_id).eq('tag_id', tag_id)
+      const { error } = await supa
+        .from('voter_tags')
+        .delete()
+        .eq('voter_id', voter_id)
+        .eq('tag_id', tag_id)
+
       if (error) return bad(res, error.message, 400)
       return ok(res, { ok: true })
     }
